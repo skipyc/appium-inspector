@@ -12,20 +12,20 @@ import {
   TagOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
-import {Button, Card, Modal, Space, Spin, Switch, Tabs, Tooltip} from 'antd';
-import {debounce} from 'lodash';
-import React, {useEffect, useRef, useState} from 'react';
-import {useNavigate} from 'react-router-dom';
+import { Button, Card, Modal, Space, Spin, Switch, Tabs, Tooltip, Collapse} from 'antd';
+import { debounce } from 'lodash';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-import {BUTTON} from '../../constants/antd-types';
-import {WINDOW_DIMENSIONS} from '../../constants/common';
+import { BUTTON } from '../../constants/antd-types';
+import { WINDOW_DIMENSIONS } from '../../constants/common';
 import {
   INSPECTOR_TABS,
   MJPEG_STREAM_CHECK_INTERVAL,
   SESSION_EXPIRY_PROMPT_TIMEOUT,
 } from '../../constants/session-inspector';
-import {SCREENSHOT_INTERACTION_MODE} from '../../constants/screenshot';
-import {clipboard} from '../../polyfills';
+import { SCREENSHOT_INTERACTION_MODE } from '../../constants/screenshot';
+import { clipboard } from '../../polyfills';
 import Commands from './Commands';
 import GestureEditor from './GestureEditor';
 import HeaderButtons from './HeaderButtons';
@@ -35,9 +35,11 @@ import SavedGestures from './SavedGestures';
 import Screenshot from './Screenshot';
 import SelectedElement from './SelectedElement';
 import SessionInfo from './SessionInfo';
+import ElementLocator from './ElementLocator';
+import LocatedElements from './LocatedElements';
 import Source from './Source';
 
-const {SELECT, TAP_SWIPE} = SCREENSHOT_INTERACTION_MODE;
+const { SELECT, TAP_SWIPE } = SCREENSHOT_INTERACTION_MODE;
 
 const downloadFile = (href, filename) => {
   let element = document.createElement('a');
@@ -88,6 +90,10 @@ const Inspector = (props) => {
     isSourceRefreshOn,
     windowSize,
     t,
+    clearSearchResults,
+    isLocatorTestModalVisible,
+    isSearchingForElements,
+    locatedElements,
   } = props;
 
   const didInitialResize = useRef(false);
@@ -144,14 +150,14 @@ const Inspector = (props) => {
   const updateSourceTreeWidthDebounced = debounce(updateSourceTreeWidth, 50);
 
   const checkMjpegStream = async () => {
-    const {setAwaitingMjpegStream} = props;
+    const { setAwaitingMjpegStream } = props;
     const img = new Image();
     img.src = mjpegScreenshotUrl;
     let imgReady = false;
     try {
       await img.decode();
       imgReady = true;
-    } catch (ign) {}
+    } catch (ign) { }
     if (imgReady && isAwaitingMjpegStream) {
       setAwaitingMjpegStream(false);
       updateSourceTreeWidthDebounced();
@@ -164,18 +170,35 @@ const Inspector = (props) => {
   };
 
   const screenshotInteractionChange = (mode) => {
-    const {selectScreenshotInteractionMode, clearCoordAction} = props;
+    const { selectScreenshotInteractionMode, clearCoordAction } = props;
     clearCoordAction(); // When the action changes, reset the swipe action
     selectScreenshotInteractionMode(mode);
   };
 
   const quitCurrentSession = async (reason, killedByUser = true) => {
     await quitSession(reason, killedByUser);
-    navigate('/session', {replace: true});
+    navigate('/session', { replace: true });
+  };
+
+  const onCancel_Locator = () => {
+    const { hideLocatorTestModal } = props;
+    hideLocatorTestModal();
+    clearSearchResults();
+  };
+
+  const onSubmit_Locator = () => {
+    const { locatorTestStrategy, locatorTestValue, searchForElement, locatedElements } = props;
+    searchForElement(locatorTestStrategy, locatorTestValue);
+
+    // if (locatedElements) {
+    //   onCancel_Locator();
+    // } else {
+    //   searchForElement(locatorTestStrategy, locatorTestValue);
+    // }
   };
 
   useEffect(() => {
-    const {applyClientMethod, getSavedActionFramework, runKeepAliveLoop, setSessionTime} = props;
+    const { applyClientMethod, getSavedActionFramework, runKeepAliveLoop, setSessionTime } = props;
     const curHeight = window.innerHeight;
     const curWidth = window.innerWidth;
     const needsResize =
@@ -189,7 +212,7 @@ const Inspector = (props) => {
       window.resizeTo(newWidth, newHeight);
     }
     didInitialResize.current = true;
-    applyClientMethod({methodName: 'getPageSource', ignoreResult: true});
+    applyClientMethod({ methodName: 'getPageSource', ignoreResult: true });
     getSavedActionFramework();
     runKeepAliveLoop();
     setSessionTime(Date.now());
@@ -288,7 +311,7 @@ const Inspector = (props) => {
       >
         {screenShotControls}
         {showScreenshot && <Screenshot {...props} scaleRatio={scaleRatio} />}
-        {screenshotError && t('couldNotObtainScreenshot', {screenshotError})}
+        {screenshotError && t('couldNotObtainScreenshot', { screenshotError })}
         {!showScreenshot && (
           <Spin size="large" spinning={true}>
             <div className={InspectorStyles.screenshotBox} />
@@ -307,6 +330,23 @@ const Inspector = (props) => {
               children: (
                 <div className="action-row">
                   <div className="action-col">
+                    <Collapse>
+                      <Collapse.Panel header="Element Locator" key={"Element_Locator"}>
+                      <div style={{ margin: "3px" }}>
+                        <ElementLocator {...props} />
+                        <>
+                          <Button loading={props.isSearchingForElements} onClick={onSubmit_Locator} type="primary">
+                            {/* {props.locatedElements ? t('Done') : t('Search')} */}
+                            {t('Search')}
+                          </Button>
+                        </>
+                        {props.locatedElements && <LocatedElements {...props} />}
+                        {props.locatedElements && (
+                            <Button onClick={(e) => e.preventDefault() || clearSearchResults()}>{t('Back')}</Button>
+                          )}
+                      </div>
+                      </Collapse.Panel>
+                    </Collapse>
                     <Card
                       title={
                         <span>
@@ -342,7 +382,7 @@ const Inspector = (props) => {
                         </span>
                       }
                     >
-                      <Source {...props} />
+                      <Source {...props}/>
                     </Card>
                   </div>
                   <div
@@ -449,7 +489,7 @@ const Inspector = (props) => {
         <p>{t('Your session is about to expire')}</p>
       </Modal>
       <Modal
-        title={t('methodCallResult', {methodName: visibleCommandMethod})}
+        title={t('methodCallResult', { methodName: visibleCommandMethod })}
         open={!!visibleCommandResult}
         onOk={() => setVisibleCommandResult(null)}
         onCancel={() => setVisibleCommandResult(null)}
